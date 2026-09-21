@@ -1,0 +1,28 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: load-balancer-service
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+# Use Eureka service names (lb://) instead of hardcoded localhost:PORT
+# The @LoadBalanced RestTemplate resolves these via Spring Cloud LoadBalancer
+services:
+  station-service-url: lb://station-service/stations
+  grid-service-url: lb://grid-service/grid
+  charging-service-url: lb://charging-service/sessions
+  notification-service-url: lb://notification-service/notifications
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

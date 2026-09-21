@@ -1,0 +1,161 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      # Service discovery auto-routing (supplements explicit routes below)
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+
+      # CORS — locked down to known frontend origins (not wildcard *)
+      # NFR-SEC05: CORS MUST be restricted to known frontend origins
+      cors-configurations:
+        '[/**]':
+          allowedOrigins:
+            - "http://localhost:3000"
+            - "http://localhost:5173"
+          allowedMethods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          allowedHeaders:
+            - "*"
+          allowCredentials: true
+          maxAge: 3600
+
+      # Note: Rate limiting is implemented as a custom in-memory GlobalFilter (RateLimitFilter.java)
+      # NFR-PERF01: 10 requests/second per user/IP enforced at gateway level
+
+      # Explicit route definitions — no wildcard catch-alls
+      routes:
+        # ─── User Service ──────────────────────────────────────────────────────
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/users/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: user-service-cb
+                fallbackUri: forward:/fallback/user-service
+
+        # ─── Station Service ───────────────────────────────────────────────────
+        - id: station-service
+          uri: lb://station-service
+          predicates:
+            - Path=/stations/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: station-service-cb
+                fallbackUri: forward:/fallback/station-service
+
+        # ─── Grid Service ──────────────────────────────────────────────────────
+        - id: grid-service
+          uri: lb://grid-service
+          predicates:
+            - Path=/grid/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: grid-service-cb
+                fallbackUri: forward:/fallback/grid-service
+
+        # ─── Charging Session Service ──────────────────────────────────────────
+        - id: charging-service
+          uri: lb://charging-service
+          predicates:
+            - Path=/sessions/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: charging-service-cb
+                fallbackUri: forward:/fallback/charging-service
+
+        # ─── Load Balancer / SOA Orchestrator ─────────────────────────────────
+        - id: load-balancer-service
+          uri: lb://load-balancer-service
+          predicates:
+            - Path=/load-balancer/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: load-balancer-service-cb
+                fallbackUri: forward:/fallback/load-balancer-service
+
+        # ─── Notification Service ──────────────────────────────────────────────
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/notifications/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: notification-service-cb
+                fallbackUri: forward:/fallback/notification-service
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+# Resilience4j Circuit Breaker Configuration (top-level, not under spring.cloud)
+resilience4j:
+  circuitbreaker:
+    instances:
+      user-service-cb:
+        slidingWindowSize: 10
+        permittedNumberOfCallsInHalfOpenState: 3
+        slidingWindowType: COUNT_BASED
+        minimumNumberOfCalls: 5
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      station-service-cb:
+        slidingWindowSize: 10
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      grid-service-cb:
+        slidingWindowSize: 10
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      charging-service-cb:
+        slidingWindowSize: 10
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      load-balancer-service-cb:
+        slidingWindowSize: 10
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+      notification-service-cb:
+        slidingWindowSize: 10
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+
+# JWT secret — must match user-service configuration
+# NFR-SEC04: Loaded from environment variable JWT_SECRET
+jwt:
+  secret: ${JWT_SECRET:ev_charging_soa_secret_key_super_secure_32_bytes_long_12345}
+
+# Actuator health endpoint
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+# Logging — gateway request/response logs
+logging:
+  level:
+    com.evcharging.apigateway: INFO
+    org.springframework.cloud.gateway: INFO
