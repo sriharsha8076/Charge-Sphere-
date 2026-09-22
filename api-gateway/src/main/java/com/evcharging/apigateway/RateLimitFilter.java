@@ -73,8 +73,9 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         String user = exchange.getRequest().getHeaders().getFirst("X-User-Name");
         if (user != null && !user.isBlank()) return user;
         // Fall back to client IP
-        if (exchange.getRequest().getRemoteAddress() != null) {
-            return exchange.getRequest().getRemoteAddress().getHostString();
+        java.net.InetSocketAddress remoteAddress = exchange.getRequest().getRemoteAddress();
+        if (remoteAddress != null && remoteAddress.getHostString() != null) {
+            return remoteAddress.getHostString();
         }
         return "unknown";
     }
@@ -83,8 +84,8 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
         response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        String body = "{\"error\":\"Too Many Requests\",\"message\":\"Rate limit exceeded. Maximum " +
-                MAX_REQUESTS_PER_SECOND + " requests/second allowed.\"}";
+        String body = "{\"error\":\"Too Many Requests\",\"message\":\"Rate limit exceeded for " +
+                principal + ". Maximum " + MAX_REQUESTS_PER_SECOND + " requests/second allowed.\"}";
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         DataBuffer buffer = response.bufferFactory().wrap(bytes);
         return response.writeWith(Mono.just(buffer));

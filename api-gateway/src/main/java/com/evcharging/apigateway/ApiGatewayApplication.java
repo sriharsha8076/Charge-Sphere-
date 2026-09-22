@@ -29,9 +29,9 @@ public class ApiGatewayApplication {
             if (user != null && !user.isBlank()) {
                 return Mono.just(user);
             }
-            // Fall back to remote IP for unauthenticated requests
-            String ip = exchange.getRequest().getRemoteAddress() != null
-                    ? exchange.getRequest().getRemoteAddress().getHostString()
+            java.net.InetSocketAddress remoteAddress = exchange.getRequest().getRemoteAddress();
+            String ip = (remoteAddress != null && remoteAddress.getHostString() != null)
+                    ? remoteAddress.getHostString()
                     : "unknown";
             return Mono.just(ip);
         };

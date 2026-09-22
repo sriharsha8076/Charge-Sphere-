@@ -13,24 +13,7 @@ spring:
           enabled: true
           lower-case-service-id: true
 
-      # CORS — locked down to known frontend origins (not wildcard *)
-      # NFR-SEC05: CORS MUST be restricted to known frontend origins
-      cors-configurations:
-        '[/**]':
-          allowedOrigins:
-            - "http://localhost:3000"
-            - "http://localhost:5173"
-          allowedMethods:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - OPTIONS
-          allowedHeaders:
-            - "*"
-          allowCredentials: true
-          maxAge: 3600
-
+      # Note: Global CORS is handled by reactive CorsWebFilter (CorsConfig.java)
       # Note: Rate limiting is implemented as a custom in-memory GlobalFilter (RateLimitFilter.java)
       # NFR-PERF01: 10 requests/second per user/IP enforced at gateway level
 
@@ -150,6 +133,10 @@ management:
     web:
       exposure:
         include: health,info
+      cors:
+        allowed-origins: "http://localhost:3000,http://localhost:5173"
+        allowed-methods: "GET,POST,OPTIONS,HEAD"
+        allowed-headers: "*"
   endpoint:
     health:
       show-details: always

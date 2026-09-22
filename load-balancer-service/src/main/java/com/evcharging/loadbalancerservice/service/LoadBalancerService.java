@@ -3,9 +3,12 @@ package com.evcharging.loadbalancerservice.service;
 import com.evcharging.loadbalancerservice.dto.AllocationResponse;
 import com.evcharging.loadbalancerservice.dto.ChargingRequest;
 import com.evcharging.loadbalancerservice.dto.StationCandidateDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
@@ -13,6 +16,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class LoadBalancerService {
+
+    private static final Logger log = LoggerFactory.getLogger(LoadBalancerService.class);
 
     // URLs are lb://service-name/path — resolved via Spring Cloud LoadBalancer + Eureka
     @Value("${services.station-service-url}")
@@ -31,7 +36,8 @@ public class LoadBalancerService {
     private RestTemplate restTemplate; // @LoadBalanced bean from LoadBalancerServiceApplication
 
     public AllocationResponse selectOptimalStation(ChargingRequest request) {
-        double requiredEnergy = request.getRequiredEnergyKwh() != null ? request.getRequiredEnergyKwh() : 25.0;
+        Double requestedEnergy = (request != null) ? request.getRequiredEnergyKwh() : null;
+        double requiredEnergy = (requestedEnergy != null) ? requestedEnergy : 25.0;
 
         // 1. Get all stations from Station Service (via Eureka lb://station-service/stations)
         List<Map<String, Object>> stationsRaw = fetchList(stationServiceUrl);
@@ -149,7 +155,7 @@ public class LoadBalancerService {
     }
 
     public AllocationResponse confirmAndAllocate(Long userId, Long stationId, Long portId, Double energyKwh) {
-        double targetEnergy = energyKwh != null ? energyKwh : 25.0;
+        double targetEnergy = (energyKwh != null) ? energyKwh : 25.0;
 
         // 1. Fetch station details to get price & gridZoneId
         Map<String, Object> station = fetchMap(stationServiceUrl + "/" + stationId);
@@ -160,8 +166,8 @@ public class LoadBalancerService {
         // 2. Reserve / Occupy Port on Station Service
         try {
             restTemplate.postForObject(stationServiceUrl + "/" + stationId + "/ports/" + portId + "/occupy", null, String.class);
-        } catch (Exception e) {
-            System.err.println("Warning: Port occupy call failed: " + e.getMessage());
+        } catch (RestClientException | IllegalStateException e) {
+            log.warn("Port occupy call failed: {}", e.getMessage());
         }
 
         // 3. Update Grid Load on Grid Service (Add ~50 kW load for active fast charger)
@@ -169,8 +175,8 @@ public class LoadBalancerService {
             Map<String, Object> loadReq = new HashMap<>();
             loadReq.put("kw", 50.0);
             restTemplate.postForObject(gridServiceUrl + "/zones/" + gridZoneId + "/add-load", loadReq, String.class);
-        } catch (Exception e) {
-            System.err.println("Warning: Grid load update failed: " + e.getMessage());
+        } catch (RestClientException | IllegalStateException e) {
+            log.warn("Grid load update failed: {}", e.getMessage());
         }
 
         // 4. Start Charging Session on Charging Session Service
@@ -187,8 +193,8 @@ public class LoadBalancerService {
             if (sessionRes != null && sessionRes.containsKey("id")) {
                 sessionId = Long.valueOf(sessionRes.get("id").toString());
             }
-        } catch (Exception e) {
-            System.err.println("Warning: Start session call failed: " + e.getMessage());
+        } catch (RestClientException | NumberFormatException | NullPointerException e) {
+            log.warn("Start session call failed: {}", e.getMessage());
         }
 
         // 5. Send Notification via Notification Service
@@ -199,8 +205,8 @@ public class LoadBalancerService {
             notifReq.put("message", "Allocated at " + stationName + " (Port #" + portId + "). Target energy: " + targetEnergy + " kWh.");
             notifReq.put("type", "SESSION_START");
             restTemplate.postForObject(notificationServiceUrl + "/send", notifReq, String.class);
-        } catch (Exception e) {
-            System.err.println("Warning: Notification dispatch failed: " + e.getMessage());
+        } catch (RestClientException | IllegalStateException e) {
+            log.warn("Notification dispatch failed: {}", e.getMessage());
         }
 
         AllocationResponse response = new AllocationResponse();
@@ -217,7 +223,8 @@ public class LoadBalancerService {
         try {
             Map[] res = restTemplate.getForObject(url, Map[].class);
             return res != null ? Arrays.asList(res) : Collections.emptyList();
-        } catch (Exception e) {
+        } catch (RestClientException | IllegalStateException e) {
+            log.warn("Fetch list failed for {}: {}", url, e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -226,7 +233,8 @@ public class LoadBalancerService {
         try {
             Map res = restTemplate.getForObject(url, Map.class);
             return res != null ? res : Collections.emptyMap();
-        } catch (Exception e) {
+        } catch (RestClientException | IllegalStateException e) {
+            log.warn("Fetch map failed for {}: {}", url, e.getMessage());
             return Collections.emptyMap();
         }
     }

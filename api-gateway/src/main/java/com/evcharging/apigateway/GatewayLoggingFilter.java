@@ -42,9 +42,8 @@ public class GatewayLoggingFilter implements GlobalFilter, Ordered {
 
         return chain.filter(exchange).doFinally(signalType -> {
             long duration = System.currentTimeMillis() - startTime;
-            int status = exchange.getResponse().getStatusCode() != null
-                    ? exchange.getResponse().getStatusCode().value()
-                    : 0;
+            org.springframework.http.HttpStatusCode statusCode = exchange.getResponse().getStatusCode();
+            int status = statusCode != null ? statusCode.value() : 0;
             log.info("← GATEWAY | {} {} | status={} | {}ms | user={}",
                     method, path, status, duration, userLabel);
         });
