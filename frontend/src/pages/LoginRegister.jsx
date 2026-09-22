@@ -50,7 +50,7 @@ export default function LoginRegister({ onLoginSuccess }) {
         setError(errMsg);
       } else {
         setBackendOffline(true);
-        setError('Backend services are offline. Start them with run-all-backend-services.bat, or continue in Demo Mode below.');
+        setError('Backend services are offline. Start them with start-all.bat, or continue in Demo Mode below.');
       }
     } finally {
       setLoading(false);
