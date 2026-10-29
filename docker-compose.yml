@@ -1,0 +1,254 @@
+version: '3.8'
+
+# ─── Shared network ────────────────────────────────────────────────────────────
+networks:
+  ev-charging-net:
+    driver: bridge
+
+# ─── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  postgres-data:
+
+services:
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 0. PostgreSQL Database
+  # ═══════════════════════════════════════════════════════════════════════════════
+  postgres:
+    image: postgres:14-alpine
+    container_name: ev-postgres
+    environment:
+      POSTGRES_DB:       ev_charging_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-123456}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/data.sql:/docker-entrypoint-initdb.d/02-data.sql
+    networks:
+      - ev-charging-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ev_charging_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 1. Service Registry (Eureka Server) — must start first
+  # ═══════════════════════════════════════════════════════════════════════════════
+  service-registry:
+    build:
+      context: ./service-registry
+      dockerfile: Dockerfile
+    container_name: ev-service-registry
+    environment:
+      SERVER_PORT: 8761
+    ports:
+      - "8761:8761"
+    networks:
+      - ev-charging-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 40s
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 2. API Gateway — starts after Eureka is healthy
+  # ═══════════════════════════════════════════════════════════════════════════════
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: ../Dockerfile.service
+    container_name: ev-api-gateway
+    environment:
+      SERVER_PORT:       8080
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      JWT_SECRET:        ${JWT_SECRET:-ev_charging_soa_secret_key_super_secure_32_bytes_long_12345}
+    ports:
+      - "8080:8080"
+    depends_on:
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 3. User Service
+  # ═══════════════════════════════════════════════════════════════════════════════
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: ../Dockerfile.service
+    container_name: ev-user-service
+    environment:
+      SERVER_PORT:       8081
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/ev_charging_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-123456}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      JWT_SECRET:        ${JWT_SECRET:-ev_charging_soa_secret_key_super_secure_32_bytes_long_12345}
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 4. Station Service  —  scaled to 2 instances to demonstrate load balancing
+  #    Access both instances through the API Gateway via lb://station-service
+  # ═══════════════════════════════════════════════════════════════════════════════
+  station-service:
+    build:
+      context: ./station-service
+      dockerfile: ../Dockerfile.service
+    environment:
+      # No fixed SERVER_PORT — let Docker assign; each instance will register
+      # with Eureka using its own container hostname and ephemeral port.
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/ev_charging_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-123456}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      # Ensure each container uses a unique instance ID
+      EUREKA_INSTANCE_INSTANCE_ID: station-service-${HOSTNAME}
+    deploy:
+      replicas: 2          # ← 2 instances registered in Eureka → round-robin LB
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 5. Charging Session Service
+  # ═══════════════════════════════════════════════════════════════════════════════
+  charging-service:
+    build:
+      context: ./charging-service
+      dockerfile: ../Dockerfile.service
+    container_name: ev-charging-service
+    environment:
+      SERVER_PORT:       8083
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/ev_charging_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-123456}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 6. Grid Monitoring Service
+  # ═══════════════════════════════════════════════════════════════════════════════
+  grid-service:
+    build:
+      context: ./grid-service
+      dockerfile: ../Dockerfile.service
+    container_name: ev-grid-service
+    environment:
+      SERVER_PORT:       8084
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/ev_charging_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-123456}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 7. Load Balancer / SOA Orchestrator
+  # ═══════════════════════════════════════════════════════════════════════════════
+  load-balancer-service:
+    build:
+      context: ./load-balancer-service
+      dockerfile: ../Dockerfile.service
+    container_name: ev-load-balancer
+    environment:
+      SERVER_PORT:       8085
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      SERVICES_STATION_SERVICE_URL:      lb://station-service/stations
+      SERVICES_GRID_SERVICE_URL:         lb://grid-service/grid
+      SERVICES_CHARGING_SERVICE_URL:     lb://charging-service/sessions
+      SERVICES_NOTIFICATION_SERVICE_URL: lb://notification-service/notifications
+    ports:
+      - "8085:8085"
+    depends_on:
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 8. Notification Service
+  # ═══════════════════════════════════════════════════════════════════════════════
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: ../Dockerfile.service
+    container_name: ev-notification-service
+    environment:
+      SERVER_PORT:       8086
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/ev_charging_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-123456}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+    ports:
+      - "8086:8086"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 9. React Frontend
+  # ═══════════════════════════════════════════════════════════════════════════════
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: ev-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8080
+    depends_on:
+      - api-gateway
+    networks:
+      - ev-charging-net

@@ -1,0 +1,505 @@
+{
+  "info": {
+    "_postman_id": "ev-charging-soa-collection-v1",
+    "name": "EV Charging SOA Platform - Full API Test Suite",
+    "description": "Complete test suite for the Distributed EV Charging Station & Grid Load Balancing Platform.\nFlow: Register → Login → Smart Allocate → Confirm Allocate → Stop Session → Get Notifications\n\nPre-requisite: Import the EV_Charging_Environment.postman_environment.json and select it before running.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",  "value": "http://localhost:8080" },
+    { "key": "jwt",      "value": "" },
+    { "key": "userId",   "value": "" },
+    { "key": "stationId","value": "" },
+    { "key": "portId",   "value": "" },
+    { "key": "sessionId","value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth – Register New User",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/users/register", "host": ["{{baseUrl}}"], "path": ["users","register"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"testuser_{{$randomInt}}\",\n  \"email\": \"testuser_{{$randomInt}}@evcharging.com\",\n  \"password\": \"password123\",\n  \"fullName\": \"Test EV User\",\n  \"role\": \"ROLE_USER\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 201 Created', function() { pm.response.to.have.status(201); });",
+              "pm.test('Response has token', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body).to.have.property('token');",
+              "  pm.expect(body.token).to.be.a('string').and.not.empty;",
+              "  pm.collectionVariables.set('jwt', body.token);",
+              "  pm.collectionVariables.set('userId', body.userId);",
+              "  pm.environment.set('jwt', body.token);",
+              "  pm.environment.set('userId', body.userId);",
+              "});",
+              "pm.test('Response has userId and username', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body).to.have.property('userId');",
+              "  pm.expect(body).to.have.property('username');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Auth – Login (saves JWT)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/users/login", "host": ["{{baseUrl}}"], "path": ["users","login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"user\",\n  \"password\": \"password123\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('JWT token received and saved', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body).to.have.property('token');",
+              "  pm.expect(body.token).to.be.a('string').and.not.empty;",
+              "  pm.collectionVariables.set('jwt', body.token);",
+              "  pm.collectionVariables.set('userId', body.userId);",
+              "  pm.environment.set('jwt', body.token);",
+              "  pm.environment.set('userId', body.userId);",
+              "  console.log('JWT saved:', body.token.substring(0,30) + '...');",
+              "});",
+              "pm.test('Role is ROLE_USER', function() {",
+              "  pm.expect(pm.response.json().role).to.eql('ROLE_USER');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Auth – Login as Admin",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/users/login", "host": ["{{baseUrl}}"], "path": ["users","login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"password123\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Role is ROLE_ADMIN', function() {",
+              "  pm.expect(pm.response.json().role).to.eql('ROLE_ADMIN');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Auth – Login with Wrong Password (expects 401)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/users/login", "host": ["{{baseUrl}}"], "path": ["users","login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"user\",\n  \"password\": \"wrongpassword\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 401 Unauthorized for wrong password', function() {",
+              "  pm.response.to.have.status(401);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Grid – Get All Zones",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+        "url": { "raw": "{{baseUrl}}/grid/zones", "host": ["{{baseUrl}}"], "path": ["grid","zones"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Returns array of zones', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body).to.be.an('array');",
+              "  pm.expect(body.length).to.be.at.least(1);",
+              "});",
+              "pm.test('Each zone has required fields', function() {",
+              "  var zones = pm.response.json();",
+              "  zones.forEach(function(z) {",
+              "    pm.expect(z).to.have.property('id');",
+              "    pm.expect(z).to.have.property('zoneName');",
+              "    pm.expect(z).to.have.property('currentLoadKw');",
+              "    pm.expect(z).to.have.property('maxCapacityKw');",
+              "    pm.expect(z).to.have.property('status');",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Stations – Get All Stations",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+        "url": { "raw": "{{baseUrl}}/stations", "host": ["{{baseUrl}}"], "path": ["stations"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Returns at least one station', function() {",
+              "  pm.expect(pm.response.json()).to.be.an('array').with.length.at.least(1);",
+              "});",
+              "pm.test('Each station has id, name, location, gridZoneId', function() {",
+              "  pm.response.json().forEach(function(s) {",
+              "    pm.expect(s).to.have.property('id');",
+              "    pm.expect(s).to.have.property('name');",
+              "    pm.expect(s).to.have.property('gridZoneId');",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Load Balancer – Smart Allocate (select-station)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type",   "value": "application/json" },
+          { "key": "Authorization",  "value": "Bearer {{jwt}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/load-balancer/select-station", "host": ["{{baseUrl}}"], "path": ["load-balancer","select-station"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": {{userId}},\n  \"requiredEnergyKwh\": 25.0\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Response has status field (SUCCESS or WARNING_OVERLOAD)', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(['SUCCESS','WARNING_OVERLOAD','NO_STATION_AVAILABLE']).to.include(body.status);",
+              "});",
+              "pm.test('Saves station and port IDs for confirm step', function() {",
+              "  var body = pm.response.json();",
+              "  if (body.recommendedStation) {",
+              "    pm.collectionVariables.set('stationId', body.recommendedStation.id);",
+              "    pm.collectionVariables.set('portId',    body.recommendedStation.selectedPortId || 1);",
+              "    pm.environment.set('stationId', body.recommendedStation.id);",
+              "    pm.environment.set('portId',    body.recommendedStation.selectedPortId || 1);",
+              "    console.log('Selected station:', body.recommendedStation.name, '| Port:', body.recommendedStation.selectedPortId);",
+              "  }",
+              "});",
+              "pm.test('Recommended station has grid load info', function() {",
+              "  var body = pm.response.json();",
+              "  if (body.recommendedStation) {",
+              "    pm.expect(body.recommendedStation).to.have.property('gridLoadPercentage');",
+              "    pm.expect(body.recommendedStation.gridLoadPercentage).to.be.a('number');",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Load Balancer – Confirm Allocate",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type",   "value": "application/json" },
+          { "key": "Authorization",  "value": "Bearer {{jwt}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/load-balancer/allocate", "host": ["{{baseUrl}}"], "path": ["load-balancer","allocate"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": {{userId}},\n  \"stationId\": {{stationId}},\n  \"portId\": {{portId}},\n  \"requiredEnergyKwh\": 25.0\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Allocation succeeded', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body.status).to.eql('SUCCESS');",
+              "});",
+              "pm.test('Session ID is returned and saved', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body).to.have.property('sessionId');",
+              "  if (body.sessionId) {",
+              "    pm.collectionVariables.set('sessionId', body.sessionId);",
+              "    pm.environment.set('sessionId', body.sessionId);",
+              "    console.log('Session ID:', body.sessionId);",
+              "  }",
+              "});",
+              "pm.test('Estimated cost is a positive number', function() {",
+              "  pm.expect(pm.response.json().estimatedCost).to.be.above(0);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Sessions – Get Active Session",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+        "url": { "raw": "{{baseUrl}}/sessions/user/{{userId}}/active", "host": ["{{baseUrl}}"], "path": ["sessions","user","{{userId}}","active"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Active session status is ACTIVE', function() {",
+              "  var body = pm.response.json();",
+              "  if (body && body.status) {",
+              "    pm.expect(body.status).to.eql('ACTIVE');",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Sessions – Stop Session",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type",   "value": "application/json" },
+          { "key": "Authorization",  "value": "Bearer {{jwt}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/sessions/stop", "host": ["{{baseUrl}}"], "path": ["sessions","stop"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sessionId\": {{sessionId}}\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Session status is COMPLETED', function() {",
+              "  pm.expect(pm.response.json().status).to.eql('COMPLETED');",
+              "});",
+              "pm.test('endTime is set', function() {",
+              "  pm.expect(pm.response.json().endTime).to.not.be.null;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Sessions – Get User Session History",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+        "url": { "raw": "{{baseUrl}}/sessions/user/{{userId}}", "host": ["{{baseUrl}}"], "path": ["sessions","user","{{userId}}"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Returns an array', function() {",
+              "  pm.expect(pm.response.json()).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Notifications – Get User Notifications",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+        "url": { "raw": "{{baseUrl}}/notifications/user/{{userId}}", "host": ["{{baseUrl}}"], "path": ["notifications","user","{{userId}}"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Returns array of notifications', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body).to.be.an('array');",
+              "  if (body.length > 0) {",
+              "    pm.expect(body[0]).to.have.property('title');",
+              "    pm.expect(body[0]).to.have.property('message');",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Gateway – Protected Route Without Token (expects 401)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/stations", "host": ["{{baseUrl}}"], "path": ["stations"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Unauthenticated request returns 401', function() {",
+              "  pm.response.to.have.status(401);",
+              "});",
+              "pm.test('Error message mentions Authorization', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body).to.have.property('error');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Grid – Get Overall Status",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+        "url": { "raw": "{{baseUrl}}/grid/status", "host": ["{{baseUrl}}"], "path": ["grid","status"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Grid status response has all required fields', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body).to.have.property('totalZones');",
+              "  pm.expect(body).to.have.property('totalCurrentLoadKw');",
+              "  pm.expect(body).to.have.property('totalCapacityKw');",
+              "  pm.expect(body).to.have.property('systemStatus');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Sessions – Get Platform Stats",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+        "url": { "raw": "{{baseUrl}}/sessions/stats", "host": ["{{baseUrl}}"], "path": ["sessions","stats"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Stats has totalSessions and totalRevenue', function() {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body).to.have.property('totalSessions');",
+              "  pm.expect(body).to.have.property('totalRevenue');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16. Load Balancer – Get Recommendations",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+        "url": {
+          "raw": "{{baseUrl}}/load-balancer/recommendations?userId={{userId}}&energyKwh=30",
+          "host": ["{{baseUrl}}"],
+          "path": ["load-balancer","recommendations"],
+          "query": [
+            { "key": "userId",    "value": "{{userId}}" },
+            { "key": "energyKwh", "value": "30" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', function() { pm.response.to.have.status(200); });",
+              "pm.test('Response has status field', function() {",
+              "  pm.expect(pm.response.json()).to.have.property('status');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

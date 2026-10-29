@@ -1,0 +1,23 @@
+# Test profile — H2 in-memory DB, Eureka disabled
+# Place at: charging-service/src/test/resources/application-test.yml
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: false
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+# Prevent Eureka auto-configuration from trying to connect
+spring.cloud.discovery.enabled: false

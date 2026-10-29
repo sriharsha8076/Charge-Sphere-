@@ -9,20 +9,135 @@ eureka:
   client:
     service-url:
       defaultZone: http://localhost:8761/eureka/
+    # ── Optimized discovery: refresh cache every 5s (default 30s) ─────────────
+    registry-fetch-interval-seconds: 5
+  instance:
+    # Send heartbeat every 5s (default 30s) — faster failure detection
+    lease-renewal-interval-in-seconds: 5
+    # Eureka removes instance if no heartbeat for 15s (default 90s)
+    lease-expiration-duration-in-seconds: 15
 
-# Use Eureka service names (lb://) instead of hardcoded localhost:PORT
-# The @LoadBalanced RestTemplate resolves these via Spring Cloud LoadBalancer
+# Use Eureka service names (lb://) — resolved via @LoadBalanced RestTemplate
 services:
-  station-service-url: lb://station-service/stations
-  grid-service-url: lb://grid-service/grid
-  charging-service-url: lb://charging-service/sessions
+  station-service-url:      lb://station-service/stations
+  grid-service-url:         lb://grid-service/grid
+  charging-service-url:     lb://charging-service/sessions
   notification-service-url: lb://notification-service/notifications
 
+# ── Actuator: expose health, metrics, and Resilience4j circuit breaker state ──
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,circuitbreakers,circuitbreakerevents,retries
   endpoint:
     health:
       show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Resilience4j — Circuit Breaker, Retry, and TimeLimiter for outbound calls
+# ──────────────────────────────────────────────────────────────────────────────
+resilience4j:
+
+  # ── Circuit Breaker ─────────────────────────────────────────────────────────
+  circuitbreaker:
+    instances:
+      station-client:
+        # Open the breaker after 50% failures in a 10-call sliding window
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        # Stay OPEN for 15 seconds before attempting HALF_OPEN
+        waitDurationInOpenState: 15s
+        # Allow 3 calls in HALF_OPEN to probe recovery
+        permittedNumberOfCallsInHalfOpenState: 3
+        # Also track slow calls (>3s) as failures
+        slowCallDurationThreshold: 3s
+        slowCallRateThreshold: 50
+
+      grid-client:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
+        permittedNumberOfCallsInHalfOpenState: 3
+        slowCallDurationThreshold: 3s
+        slowCallRateThreshold: 50
+
+      charging-client:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
+        permittedNumberOfCallsInHalfOpenState: 3
+
+      notification-client:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 60        # Notifications can tolerate more failures
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+
+  # ── Retry ───────────────────────────────────────────────────────────────────
+  retry:
+    instances:
+      station-client:
+        # Retry up to 3 times with exponential backoff
+        maxAttempts: 3
+        waitDuration: 500ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2     # 500ms → 1000ms → 2000ms
+        retryExceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+        ignoreExceptions:
+          - org.springframework.web.client.HttpClientErrorException.NotFound
+
+      grid-client:
+        maxAttempts: 3
+        waitDuration: 500ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpServerErrorException
+
+      charging-client:
+        maxAttempts: 2        # Fewer retries — idempotency concern with session creation
+        waitDuration: 300ms
+        retryExceptions:
+          - org.springframework.web.client.ResourceAccessException
+
+      notification-client:
+        maxAttempts: 2
+        waitDuration: 200ms
+        retryExceptions:
+          - org.springframework.web.client.ResourceAccessException
+
+  # ── Time Limiter (timeout per call attempt) ──────────────────────────────────
+  timelimiter:
+    instances:
+      station-client:
+        timeoutDuration: 5s
+        cancelRunningFuture: true
+      grid-client:
+        timeoutDuration: 5s
+        cancelRunningFuture: true
+      charging-client:
+        timeoutDuration: 8s      # Session creation may take longer
+        cancelRunningFuture: true
+      notification-client:
+        timeoutDuration: 3s      # Fast fail on notifications
+        cancelRunningFuture: true
+
+logging:
+  level:
+    com.evcharging.loadbalancerservice: INFO
+    io.github.resilience4j: DEBUG

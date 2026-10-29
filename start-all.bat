@@ -22,6 +22,7 @@ if exist "C:\Users\Harsha\.antigravity-ide\extensions\oracle.oracle-java-26.0.2-
     set "PATH=C:\Users\Harsha\.antigravity-ide\extensions\oracle.oracle-java-26.0.2-universal\nbcode\java\maven\bin;%PATH%"
     set "MVN=C:\Users\Harsha\.antigravity-ide\extensions\oracle.oracle-java-26.0.2-universal\nbcode\java\maven\bin\mvn.cmd"
 ) else if exist "C:\Users\Harsha\.m2\wrapper\dists\apache-maven-3.9.16\0daed3be3ebd1c706f0e69e8b07c6b73f5cc4ea3dfce72a8d0ec2e849ca2ddb0\bin\mvn.cmd" (
+    set "PATH=C:\Users\Harsha\.m2\wrapper\dists\apache-maven-3.9.16\0daed3be3ebd1c706f0e69e8b07c6b73f5cc4ea3dfce72a8d0ec2e849ca2ddb0\bin;%PATH%"
     set "MVN=C:\Users\Harsha\.m2\wrapper\dists\apache-maven-3.9.16\0daed3be3ebd1c706f0e69e8b07c6b73f5cc4ea3dfce72a8d0ec2e849ca2ddb0\bin\mvn.cmd"
 ) else (
     set "MVN=mvn"

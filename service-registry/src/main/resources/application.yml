@@ -8,8 +8,43 @@ spring:
 eureka:
   instance:
     hostname: localhost
+
   client:
     register-with-eureka: false
     fetch-registry: false
     service-url:
       defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+
+  server:
+    # ── Optimized discovery settings ────────────────────────────────────────
+    # Expected client heartbeat interval (must match client lease-renewal setting)
+    expected-client-renewal-interval-seconds: 5
+
+    # Percentage of registered clients that must be sending heartbeats
+    # before Eureka disables self-preservation mode
+    renewal-percent-threshold: 0.85
+
+    # How often (ms) Eureka scans for expired leases (default: 60000 = 60s)
+    eviction-interval-timer-in-ms: 10000
+
+    # Disable self-preservation in development (re-enable in production)
+    # Self-preservation prevents mass eviction during brief network partitions
+    enable-self-preservation: false
+
+    # Response cache update interval (default: 30s) — refresh faster
+    response-cache-update-interval-ms: 5000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.netflix.eureka: WARN
+    com.netflix.discovery: WARN
+    com.evcharging.serviceregistry: INFO
