@@ -68,6 +68,7 @@ services:
     environment:
       SERVER_PORT:       8080
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
       JWT_SECRET:        ${JWT_SECRET:-ev_charging_soa_secret_key_super_secure_32_bytes_long_12345}
     ports:
       - "8080:8080"
@@ -97,6 +98,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-123456}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
       JWT_SECRET:        ${JWT_SECRET:-ev_charging_soa_secret_key_super_secure_32_bytes_long_12345}
     ports:
       - "8081:8081"
@@ -129,6 +131,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-123456}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
       # Ensure each container uses a unique instance ID
       EUREKA_INSTANCE_INSTANCE_ID: station-service-${HOSTNAME}
     deploy:
@@ -155,6 +158,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-123456}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
     ports:
       - "8083:8083"
     depends_on:
@@ -179,6 +183,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-123456}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
     ports:
       - "8084:8084"
     depends_on:
@@ -200,6 +205,7 @@ services:
     environment:
       SERVER_PORT:       8085
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
       SERVICES_STATION_SERVICE_URL:      lb://station-service/stations
       SERVICES_GRID_SERVICE_URL:         lb://grid-service/grid
       SERVICES_CHARGING_SERVICE_URL:     lb://charging-service/sessions
@@ -226,6 +232,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-123456}
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
     ports:
       - "8086:8086"
     depends_on:

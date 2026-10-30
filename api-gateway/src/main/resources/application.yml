@@ -88,7 +88,7 @@ spring:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE:http://localhost:8761/eureka/}
 
 # Resilience4j Circuit Breaker Configuration (top-level, not under spring.cloud)
 resilience4j:

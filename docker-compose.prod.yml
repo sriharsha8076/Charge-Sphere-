@@ -1,0 +1,242 @@
+﻿version: '3.8'
+
+# ─── Production Docker Compose — pulls pre-built images from Docker Hub ─────────
+# No source code required on the server.
+#
+# Usage on EC2:
+#   1. scp this file + the database/ folder to your EC2 instance
+#   2. Create .env on the server (see .env.example)
+#   3. docker compose -f docker-compose.prod.yml up -d
+#
+# Public endpoints (open in EC2 Security Group):
+#   Frontend  →  http://<EC2-IP>        (port 80)
+#   API GW    →  http://<EC2-IP>:8080   (port 8080)
+#   Eureka    →  http://<EC2-IP>:8761   (admin review only — close after)
+#
+# Private — Docker-internal only, NOT exposed to the internet:
+#   PostgreSQL   5432
+#   user-service 8081  station-service 8082  charging-service 8083
+#   grid-service 8084  load-balancer   8085  notification     8086
+# ────────────────────────────────────────────────────────────────────────────────
+
+networks:
+  ev-charging-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+
+services:
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 0. PostgreSQL — INTERNAL ONLY (no host port binding)
+  # ═══════════════════════════════════════════════════════════════════════════════
+  postgres:
+    image: postgres:14-alpine
+    container_name: ev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ev_charging_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/data.sql:/docker-entrypoint-initdb.d/02-data.sql
+    networks:
+      - ev-charging-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ev_charging_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 1. Service Registry (Eureka)
+  # ═══════════════════════════════════════════════════════════════════════════════
+  service-registry:
+    image: ${DOCKER_HUB_USERNAME}/charge-sphere-service-registry:latest
+    container_name: ev-service-registry
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8761
+    ports:
+      - "8761:8761"
+    networks:
+      - ev-charging-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 60s
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 2. API Gateway — PUBLIC (port 8080)
+  # ═══════════════════════════════════════════════════════════════════════════════
+  api-gateway:
+    image: ${DOCKER_HUB_USERNAME}/charge-sphere-api-gateway:latest
+    container_name: ev-api-gateway
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8080
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "8080:8080"
+    depends_on:
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 3. User Service — INTERNAL ONLY
+  # ═══════════════════════════════════════════════════════════════════════════════
+  user-service:
+    image: ${DOCKER_HUB_USERNAME}/charge-sphere-user-service:latest
+    container_name: ev-user-service
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/ev_charging_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 4. Station Service (2 replicas for load balancing) — INTERNAL ONLY
+  # ═══════════════════════════════════════════════════════════════════════════════
+  station-service:
+    image: ${DOCKER_HUB_USERNAME}/charge-sphere-station-service:latest
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/ev_charging_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    deploy:
+      replicas: 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 5. Charging Session Service — INTERNAL ONLY
+  # ═══════════════════════════════════════════════════════════════════════════════
+  charging-service:
+    image: ${DOCKER_HUB_USERNAME}/charge-sphere-charging-service:latest
+    container_name: ev-charging-service
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8083
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/ev_charging_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 6. Grid Monitoring Service — INTERNAL ONLY
+  # ═══════════════════════════════════════════════════════════════════════════════
+  grid-service:
+    image: ${DOCKER_HUB_USERNAME}/charge-sphere-grid-service:latest
+    container_name: ev-grid-service
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8084
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/ev_charging_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 7. Load Balancer / SOA Orchestrator — INTERNAL ONLY
+  # ═══════════════════════════════════════════════════════════════════════════════
+  load-balancer-service:
+    image: ${DOCKER_HUB_USERNAME}/charge-sphere-load-balancer-service:latest
+    container_name: ev-load-balancer
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8085
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    depends_on:
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 8. Notification Service — INTERNAL ONLY
+  # ═══════════════════════════════════════════════════════════════════════════════
+  notification-service:
+    image: ${DOCKER_HUB_USERNAME}/charge-sphere-notification-service:latest
+    container_name: ev-notification-service
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8086
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/ev_charging_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # 9. React Frontend (Nginx) — PUBLIC (port 80)
+  # ═══════════════════════════════════════════════════════════════════════════════
+  frontend:
+    image: ${DOCKER_HUB_USERNAME}/charge-sphere-frontend:latest
+    container_name: ev-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - ev-charging-net
