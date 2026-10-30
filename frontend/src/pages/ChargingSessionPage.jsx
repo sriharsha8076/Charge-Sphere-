@@ -29,9 +29,20 @@ export default function ChargingSessionPage({ currentUser }) {
       if (s && s.stationId) {
         const st = await stationService.getStationById(s.stationId);
         setStation(st);
-        const start = new Date(s.startTime).getTime();
-        const now = new Date().getTime();
-        setElapsedSeconds(Math.max(0, Math.floor((now - start) / 1000)));
+        let startMs;
+        if (typeof s.startTime === 'string') {
+          const utcStr = s.startTime.endsWith('Z') || s.startTime.includes('+') ? s.startTime : s.startTime + 'Z';
+          startMs = new Date(utcStr).getTime();
+        } else {
+          startMs = new Date(s.startTime).getTime();
+        }
+        const nowMs = Date.now();
+        let diffSecs = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+        // If timezone offset caused a ~5h30m leap (19800 seconds in IST), subtract the offset
+        if (diffSecs >= 19700 && diffSecs <= 20000) {
+          diffSecs = Math.max(0, diffSecs - 19800);
+        }
+        setElapsedSeconds(diffSecs);
       }
     } catch (err) {
       console.error('Error fetching charging session:', err);
@@ -86,9 +97,12 @@ export default function ChargingSessionPage({ currentUser }) {
   }
 
   const targetEnergy = session.energyConsumedKwh || 25.0;
-  const currentEnergy = Math.min(targetEnergy, (targetEnergy * (elapsedSeconds / 1800))).toFixed(2);
-  const currentPct = Math.min(100, Math.round((currentEnergy / targetEnergy) * 100));
-  const currentCost = (currentEnergy * (station ? station.pricePerKwh : 14.50)).toFixed(2);
+  // Realistic dynamic charging: starts at 15% and increases with elapsed duration over 20 mins (1200s)
+  const simulatedCycleSecs = 1200;
+  const progressRatio = Math.min(1.0, elapsedSeconds / simulatedCycleSecs);
+  const currentPct = Math.min(100, Math.max(15, Math.round(15 + progressRatio * 85)));
+  const currentEnergy = Math.min(targetEnergy, (targetEnergy * (currentPct / 100))).toFixed(2);
+  const currentCost = (Number(currentEnergy) * (station ? station.pricePerKwh : 14.50)).toFixed(2);
 
   return (
     <div className="container" style={{ maxWidth: 860 }}>
