@@ -287,14 +287,16 @@ export default function TopBar({ currentUser, onLogout }) {
                     <span>Platform Settings</span>
                   </Link>
 
-                  <Link
-                    to="/soa-architecture"
-                    className="profile-dropdown-item"
-                    onClick={() => setProfileOpen(false)}
-                  >
-                    <Layers size={15} />
-                    <span>SOA Architecture Flow</span>
-                  </Link>
+                  {currentUser?.role === 'ROLE_ADMIN' && (
+                    <Link
+                      to="/soa-architecture"
+                      className="profile-dropdown-item"
+                      onClick={() => setProfileOpen(false)}
+                    >
+                      <Layers size={15} />
+                      <span>SOA Architecture Flow</span>
+                    </Link>
+                  )}
 
                   <div style={{ height: 1, background: '#e5e7eb', margin: '4px 0' }} />
 

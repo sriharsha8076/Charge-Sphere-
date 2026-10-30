@@ -55,11 +55,7 @@ export default function Sidebar({ currentUser, onLogout }) {
         <div className="sidebar-section-label" style={{ marginTop: 8 }}>Management</div>
 
         {currentUser && navItem('/smart-charging', <Zap size={16} />, 'Smart Charging')}
-        {navItem('/users', <User size={16} />, 'Users')}
-        {navItem('/analytics', <BarChart2 size={16} />, 'Analytics')}
-        {navItem('/grid-load', <Activity size={16} />, 'Grid Load')}
         {navItem('/notifications', <Bell size={16} />, 'Notifications')}
-        {navItem('/soa-architecture', <Layers size={16} />, 'SOA Architecture')}
 
         <div className="sidebar-section-label" style={{ marginTop: 8 }}>Account</div>
         {navItem('/profile', <User size={16} />, 'Profile')}
@@ -67,8 +63,12 @@ export default function Sidebar({ currentUser, onLogout }) {
 
         {currentUser?.role === 'ROLE_ADMIN' && (
           <>
-            <div className="sidebar-section-label" style={{ marginTop: 8 }}>Admin</div>
+            <div className="sidebar-section-label" style={{ marginTop: 8 }}>Admin Console</div>
             {navItem('/admin', <Shield size={16} />, 'Admin Center')}
+            {navItem('/users', <User size={16} />, 'Users')}
+            {navItem('/analytics', <BarChart2 size={16} />, 'Analytics')}
+            {navItem('/grid-load', <Activity size={16} />, 'Grid Load')}
+            {navItem('/soa-architecture', <Layers size={16} />, 'SOA Architecture')}
           </>
         )}
       </nav>

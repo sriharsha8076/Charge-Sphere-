@@ -52,13 +52,19 @@ export default function Users({ currentUser }) {
     e.preventDefault();
     if (!newVehicle.model || !newVehicle.licensePlate) return;
     try {
-      await userService.addVehicle(selectedUserId, newVehicle);
-      setStatusMsg({ type: 'success', text: `Vehicle ${newVehicle.model} added successfully!` });
+      const payload = {
+        model: newVehicle.make ? `${newVehicle.make} ${newVehicle.model}` : newVehicle.model,
+        batteryCapacityKwh: Number(newVehicle.batteryCapacityKwh) || 50,
+        registrationNumber: newVehicle.licensePlate || `AP16 EV ${Math.floor(1000 + Math.random() * 9000)}`,
+        licensePlate: newVehicle.licensePlate
+      };
+      await userService.addVehicle(selectedUserId, payload);
+      setStatusMsg({ type: 'success', text: `Vehicle ${payload.model} added successfully!` });
       setShowAddVehicle(false);
       setNewVehicle({ model: '', make: '', batteryCapacityKwh: 50, currentSoc: 20, licensePlate: '', maxChargingRateKw: 50 });
       fetchUserData();
     } catch (err) {
-      setStatusMsg({ type: 'error', text: 'Failed to add vehicle: ' + (err.message || 'API error') });
+      setStatusMsg({ type: 'error', text: 'Failed to add vehicle: ' + (err.response?.data?.message || err.message || 'API error') });
     }
   };
 
@@ -212,7 +218,7 @@ export default function Users({ currentUser }) {
                             <Car size={13} color="#22c55e" />
                             <span style={{ fontWeight: 600, color: '#1f2937' }}>{v.make} {v.model}</span>
                             <span style={{ color: '#6b7280', fontSize: 11, background: '#f3f4f6', padding: '1px 5px', borderRadius: 4 }}>
-                              {v.licensePlate}
+                              {v.licensePlate || v.registrationNumber}
                             </span>
                             <span style={{ color: '#2563eb', fontSize: 11 }}>
                               {v.batteryCapacityKwh} kWh ({v.currentSoc}%)

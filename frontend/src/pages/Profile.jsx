@@ -36,13 +36,19 @@ export default function Profile({ currentUser }) {
   const handleAddVehicle = async (e) => {
     e.preventDefault();
     try {
-      await userService.addVehicle(currentUser.id, newVehicle);
-      setMsg({ type: 'success', text: `Vehicle ${newVehicle.make} ${newVehicle.model} added successfully!` });
+      const payload = {
+        model: newVehicle.make ? `${newVehicle.make} ${newVehicle.model}` : newVehicle.model,
+        batteryCapacityKwh: Number(newVehicle.batteryCapacityKwh) || 50,
+        registrationNumber: newVehicle.licensePlate || `AP16 EV ${Math.floor(1000 + Math.random() * 9000)}`,
+        licensePlate: newVehicle.licensePlate
+      };
+      await userService.addVehicle(currentUser.id, payload);
+      setMsg({ type: 'success', text: `Vehicle ${payload.model} added successfully!` });
       setShowAddModal(false);
       setNewVehicle({ model: '', make: '', batteryCapacityKwh: 50, currentSoc: 30, licensePlate: '', maxChargingRateKw: 50 });
       fetchVehicles();
     } catch (err) {
-      setMsg({ type: 'error', text: 'Failed to add vehicle: ' + (err.message || 'API error') });
+      setMsg({ type: 'error', text: 'Failed to add vehicle: ' + (err.response?.data?.message || err.message || 'API error') });
     }
   };
 
@@ -149,8 +155,8 @@ export default function Profile({ currentUser }) {
                         <Car size={16} color="#15803d" />
                       </div>
                       <div>
-                        <div style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>{v.make} {v.model}</div>
-                        <div style={{ fontSize: 11, color: '#6b7280' }}>Plate: <strong>{v.licensePlate}</strong></div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#111827' }}>{v.make ? `${v.make} ${v.model}` : v.model}</div>
+                        <div style={{ fontSize: 11, color: '#6b7280' }}>Plate: <strong>{v.licensePlate || v.registrationNumber || 'AP16-EV-XXXX'}</strong></div>
                       </div>
                     </div>
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: '#f0fdf4', padding: '2px 8px', borderRadius: 8 }}>
