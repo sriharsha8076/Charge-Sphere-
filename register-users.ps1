@@ -91,3 +91,4 @@ Banner "Done"
 Write-Host "  All done! Log in at $($BaseUrl -replace ':8080','')  (or :8080 for API)" -ForegroundColor Cyan
 Write-Host "  Default password for all users: password123" -ForegroundColor Gray
 Write-Host ""
+

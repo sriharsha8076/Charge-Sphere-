@@ -8,8 +8,8 @@ RUN npm ci || npm install
 
 COPY . .
 
-# VITE_API_BASE_URL is injected at build time via --build-arg
-ARG VITE_API_BASE_URL=http://localhost:8080
+# VITE_API_BASE_URL is empty in Docker/Nginx production to use relative URLs reverse-proxied by Nginx
+ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build

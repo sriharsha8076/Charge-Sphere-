@@ -3,7 +3,7 @@ import axios from 'axios';
 // In production Docker/Nginx, API calls use same-origin relative URLs (/users, /stations, etc.)
 // which are reverse-proxied by Nginx directly to http://api-gateway:8080.
 // This completely eliminates CORS issues and cross-port restrictions.
-const GATEWAY_URL = import.meta.env.VITE_API_BASE_URL !== undefined
+const GATEWAY_URL = import.meta.env.VITE_API_BASE_URL
   ? import.meta.env.VITE_API_BASE_URL
   : (import.meta.env.DEV ? 'http://localhost:8080' : '');
 

@@ -1,4 +1,4 @@
-﻿# ═══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 # build-and-push.ps1  —  Charge Sphere: Build + Push all Docker images to Hub
 # ═══════════════════════════════════════════════════════════════════════════════
 # Prerequisites:
@@ -14,8 +14,8 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$HubUser,
 
-    [Parameter(Mandatory=$true)]
-    [string]$EC2IP
+    [Parameter(Mandatory=$false)]
+    [string]$EC2IP = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -77,11 +77,11 @@ foreach ($imgName in $services.Keys) {
     OK "Built $fullImg"
 }
 
-# ── Build Frontend (requires EC2 IP for VITE_API_BASE_URL) ────────────────────
+# ── Build Frontend (relative URLs — works on ANY EC2 IP automatically) ──────
 Banner "BUILDING REACT FRONTEND"
 $frontendImg = "${HubUser}/charge-sphere-frontend:${TAG}"
-$apiUrl = "http://${EC2IP}:8080"
-Step "Building $frontendImg with VITE_API_BASE_URL=$apiUrl ..."
+$apiUrl = if ($EC2IP) { "http://${EC2IP}:8080" } else { "" }
+Step "Building $frontendImg (IP-agnostic via Nginx reverse-proxy) ..."
 docker build `
     --build-arg VITE_API_BASE_URL=$apiUrl `
     -t $frontendImg `
