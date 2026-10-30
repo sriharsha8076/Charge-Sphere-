@@ -29,9 +29,10 @@ export default function LoginRegister({ onLoginSuccess }) {
         onLoginSuccess(res);
         navigate(res.role === 'ROLE_ADMIN' ? '/admin' : '/');
       } else {
-        res = await userService.register(formData);
+        // Public sign-up always creates ROLE_USER accounts
+        res = await userService.register({ ...formData, role: 'ROLE_USER' });
         onLoginSuccess(res);
-        navigate(res.role === 'ROLE_ADMIN' ? '/admin' : '/');
+        navigate('/');
       }
     } catch (err) {
       const errMsg =
@@ -249,15 +250,8 @@ export default function LoginRegister({ onLoginSuccess }) {
               )}
             </div>
 
-            {!isLogin && (
-              <div>
-                <label style={labelStyle}>Account Type</label>
-                <select name="role" value={formData.role} onChange={handleChange} style={inputStyle}>
-                  <option value="ROLE_USER">EV User</option>
-                  <option value="ROLE_ADMIN">Grid Administrator</option>
-                </select>
-              </div>
-            )}
+            {/* Account type is always EV User for public sign-up.
+                Admins are created via the register-users.ps1 script only. */}
 
             <button
               type="submit" disabled={loading}
