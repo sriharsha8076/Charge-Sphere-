@@ -75,3 +75,12 @@ INSERT INTO charging_sessions (id, user_id, station_id, port_id, start_time, end
 INSERT INTO notifications (id, user_id, title, message, timestamp, is_read, type) VALUES
 (1, 1, 'Charging Started', 'Your charging session #1 at Vijayawada Central EV Station has started on Port 1.', CURRENT_TIMESTAMP - INTERVAL '25 MINUTE', true, 'SESSION_START'),
 (2, 1, 'Charging Completed', 'Session #2 completed. Total energy: 28.0 kWh, Total cost: ₹322.00.', CURRENT_TIMESTAMP - INTERVAL '1 HOUR', false, 'SESSION_STOP');
+
+-- 8. Synchronize PostgreSQL Primary Key Sequences with Seed Data IDs
+SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 1) FROM users));
+SELECT setval('vehicles_id_seq', (SELECT COALESCE(MAX(id), 1) FROM vehicles));
+SELECT setval('charging_stations_id_seq', (SELECT COALESCE(MAX(id), 1) FROM charging_stations));
+SELECT setval('charging_ports_id_seq', (SELECT COALESCE(MAX(id), 1) FROM charging_ports));
+SELECT setval('grid_zones_id_seq', (SELECT COALESCE(MAX(id), 1) FROM grid_zones));
+SELECT setval('charging_sessions_id_seq', (SELECT COALESCE(MAX(id), 1) FROM charging_sessions));
+SELECT setval('notifications_id_seq', (SELECT COALESCE(MAX(id), 1) FROM notifications));
