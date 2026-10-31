@@ -2,11 +2,13 @@ package com.evcharging.userservice.controller;
 
 import com.evcharging.userservice.dto.AuthResponse;
 import com.evcharging.userservice.dto.LoginRequest;
+import com.evcharging.userservice.dto.OtpRequest;
 import com.evcharging.userservice.dto.RegisterRequest;
 import com.evcharging.userservice.entity.User;
 import com.evcharging.userservice.entity.Vehicle;
 import com.evcharging.userservice.repository.UserRepository;
 import com.evcharging.userservice.repository.VehicleRepository;
+import com.evcharging.userservice.service.EmailOtpService;
 import com.evcharging.userservice.util.JwtUtil;
 import io.jsonwebtoken.Claims;
 import org.springframework.http.HttpStatus;
@@ -39,19 +41,42 @@ public class UserController {
     private final VehicleRepository vehicleRepository;
     private final JwtUtil jwtUtil;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final EmailOtpService emailOtpService;
 
-    public UserController(UserRepository userRepository, VehicleRepository vehicleRepository, JwtUtil jwtUtil) {
+    public UserController(UserRepository userRepository, VehicleRepository vehicleRepository, JwtUtil jwtUtil, EmailOtpService emailOtpService) {
         this.userRepository = userRepository;
         this.vehicleRepository = vehicleRepository;
         this.jwtUtil = jwtUtil;
+        this.emailOtpService = emailOtpService;
         this.passwordEncoder = new BCryptPasswordEncoder(10);
     }
 
-    // ─── Authentication ────────────────────────────────────────────────────────
+    // ─── Authentication & OTP ──────────────────────────────────────────────────
+
+    /**
+     * POST /users/send-otp
+     * Generate and dispatch a 6-digit OTP code to the requested email.
+     */
+    @PostMapping("/send-otp")
+    public ResponseEntity<?> sendOtp(@RequestBody OtpRequest request) {
+        if (request.getEmail() == null || !request.getEmail().contains("@")) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("A valid email address is required");
+        }
+        if (userRepository.existsByEmail(request.getEmail().trim())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Email is already registered. Please sign in instead.");
+        }
+        try {
+            emailOtpService.sendOtp(request.getEmail());
+            return ResponseEntity.ok(Map.of("message", "OTP sent successfully to " + request.getEmail()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to send OTP email: " + e.getMessage());
+        }
+    }
 
     /**
      * POST /users/register
-     * Register a new EV user or admin. Password is BCrypt-hashed before storage.
+     * Register a new EV user. Validates OTP verification code before creation.
      */
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody RegisterRequest request) {
@@ -61,11 +86,21 @@ public class UserController {
         if (request.getPassword() == null || request.getPassword().length() < 6) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Password must be at least 6 characters");
         }
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Email is required");
+        }
         if (userRepository.existsByUsername(request.getUsername())) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Username is already taken");
         }
         if (userRepository.existsByEmail(request.getEmail())) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Email is already registered");
+        }
+        // Validate OTP verification code
+        if (request.getOtp() == null || request.getOtp().isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("OTP verification code is required. Please click 'Send OTP' first.");
+        }
+        if (!emailOtpService.verifyOtp(request.getEmail(), request.getOtp())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid or expired OTP verification code. Please request a new code.");
         }
 
         User user = new User();

@@ -37,6 +37,7 @@ const apiCall = async (method, path, data = null) => {
 export const userService = {
   login: (credentials) => apiCall('post', '/users/login', credentials),
   register: (userData) => apiCall('post', '/users/register', userData),
+  sendOtp: (email) => apiCall('post', '/users/send-otp', { email }),
   getProfile: (id) => apiCall('get', `/users/${id}`),
   getUserVehicles: (userId) => apiCall('get', `/users/${userId}/vehicles`),
   addVehicle: (userId, vehicle) => apiCall('post', `/users/${userId}/vehicles`, vehicle),

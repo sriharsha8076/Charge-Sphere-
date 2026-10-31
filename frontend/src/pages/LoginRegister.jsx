@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { userService } from '../services/api';
-import { ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import ChargeSphereLogo from '../components/ChargeSphereLogo';
 
 export default function LoginRegister({ onLoginSuccess }) {
@@ -13,9 +13,47 @@ export default function LoginRegister({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // OTP State
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const [sendingOtp, setSendingOtp] = useState(false);
+
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (otpCooldown > 0) {
+      const timer = setTimeout(() => setOtpCooldown(c => c - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [otpCooldown]);
+
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+  const handleSendOtp = async () => {
+    if (!formData.email || !formData.email.includes('@')) {
+      setError('Please enter a valid email address first.');
+      return;
+    }
+    setError('');
+    setSuccess('');
+    setSendingOtp(true);
+    try {
+      await userService.sendOtp(formData.email);
+      setOtpSent(true);
+      setOtpCooldown(60);
+      setSuccess(`Verification OTP sent to ${formData.email}! Please check your inbox.`);
+    } catch (err) {
+      const errMsg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        (typeof err.response?.data === 'string' ? err.response?.data : null);
+      setError(errMsg || 'Failed to send OTP. Please verify your email.');
+    } finally {
+      setSendingOtp(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,8 +67,13 @@ export default function LoginRegister({ onLoginSuccess }) {
         onLoginSuccess(res);
         navigate(res.role === 'ROLE_ADMIN' ? '/admin' : '/');
       } else {
-        // Public sign-up always creates ROLE_USER accounts
-        res = await userService.register({ ...formData, role: 'ROLE_USER' });
+        if (!otp || otp.trim().length !== 6) {
+          setError('Please enter the 6-digit OTP code sent to your email.');
+          setLoading(false);
+          return;
+        }
+        // Public sign-up always creates ROLE_USER accounts with OTP verification
+        res = await userService.register({ ...formData, role: 'ROLE_USER', otp: otp.trim() });
         onLoginSuccess(res);
         navigate('/');
       }
@@ -50,6 +93,9 @@ export default function LoginRegister({ onLoginSuccess }) {
     setError('');
     setSuccess('');
     setFormData({ username: '', email: '', password: '', fullName: '', role: 'ROLE_USER' });
+    setOtp('');
+    setOtpSent(false);
+    setOtpCooldown(0);
   };
 
   return (
@@ -211,11 +257,59 @@ export default function LoginRegister({ onLoginSuccess }) {
             {!isLogin && (
               <div>
                 <label style={labelStyle}>Email Address</label>
-                <input
-                  type="email" name="email" value={formData.email}
-                  onChange={handleChange} style={inputStyle}
-                  placeholder="you@example.com" required
-                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="email" name="email" value={formData.email}
+                    onChange={handleChange} style={{ ...inputStyle, flex: 1 }}
+                    placeholder="you@example.com" required
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={sendingOtp || otpCooldown > 0}
+                    style={{
+                      padding: '0 16px', borderRadius: 8, border: '1px solid rgba(34,197,94,0.35)',
+                      background: otpCooldown > 0 ? 'rgba(255,255,255,0.05)' : 'rgba(34,197,94,0.18)',
+                      color: otpCooldown > 0 ? '#9ca3af' : '#4ade80',
+                      fontWeight: 600, fontSize: 13, cursor: (sendingOtp || otpCooldown > 0) ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6,
+                      fontFamily: 'inherit'
+                    }}
+                  >
+                    {sendingOtp ? 'Sending...' : otpCooldown > 0 ? `Resend (${otpCooldown}s)` : otpSent ? 'Resend OTP' : 'Send OTP'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!isLogin && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={labelStyle}>Email Verification Code (OTP)</label>
+                  {otpSent && <span style={{ fontSize: 11, color: '#4ade80', fontWeight: 600 }}>Code sent to inbox</span>}
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    style={{
+                      ...inputStyle,
+                      letterSpacing: '8px',
+                      fontSize: '18px',
+                      fontWeight: 700,
+                      textAlign: 'center',
+                      background: otpSent ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.03)',
+                      borderColor: otpSent ? 'rgba(34,197,94,0.45)' : 'rgba(255,255,255,0.1)'
+                    }}
+                    placeholder="••••••"
+                    required
+                  />
+                </div>
+                <p style={{ margin: '5px 0 0', fontSize: 11, color: '#6b7280' }}>
+                  {otpSent ? 'Enter the 6-digit code received on your email' : 'Click "Send OTP" to receive a 6-digit verification code'}
+                </p>
               </div>
             )}
 

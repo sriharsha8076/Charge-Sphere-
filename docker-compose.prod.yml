@@ -1,4 +1,4 @@
-﻿version: '3.8'
+version: '3.8'
 
 # ─── Production Docker Compose — pulls pre-built images from Docker Hub ─────────
 # No source code required on the server.
@@ -113,6 +113,10 @@ services:
       EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka/
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
       JWT_SECRET: ${JWT_SECRET}
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-smtp.gmail.com}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-sriharsha8076@gmail.com}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-xdpasltresgrxtgw}
     depends_on:
       postgres:
         condition: service_healthy
